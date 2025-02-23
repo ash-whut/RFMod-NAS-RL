@@ -1,2 +1,4 @@
 **checkpoint**
 *.pyc
+*.h5
+*.csv
