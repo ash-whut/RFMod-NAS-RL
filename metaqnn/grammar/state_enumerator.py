@@ -43,9 +43,10 @@ class State(object):
 
     def to_tensorflow_layer(self):  # TODO Make activation configurable
         if self.terminate:
+            print("FC size: ", self.fc_size)
             return tf.keras.layers.Dense(self.fc_size, kernel_initializer='glorot_uniform', activation='softmax')
         elif self.layer_type == 'start':
-            return tf.keras.layers.InputLayer(input_shape=(self.feature_size, 1))
+            return tf.keras.layers.InputLayer(input_shape=(self.feature_size, 2))
         elif self.layer_type == 'conv':
             return tf.keras.layers.Convolution1D(filters=self.filter_depth, kernel_size=self.filter_size,
                                                  strides=self.stride, kernel_initializer='he_uniform',
