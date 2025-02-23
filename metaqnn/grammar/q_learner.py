@@ -136,8 +136,7 @@ class QLearner:
 
     def __init__(self, hyper_parameters, state_space_parameters, epsilon, state=None, qstore=None,
                  replay_dictionary=pd.DataFrame(columns=[
-                     'net', 'accuracy', 'guessing_entropy_at_10_percent', 'guessing_entropy_at_50_percent',
-                     'guessing_entropy_no_to_0', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
+                     'net', 'accuracy', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
                  ]), reward_small=False):
 
         self.state_list = []
@@ -170,18 +169,14 @@ class QLearner:
 
         # Check if we have already trained this model
         if net_string in self.replay_dictionary['net'].values:
-            (accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent,
-             guessing_entropy_no_to_0, trainable_params) = self.get_metrics_from_replay(net_string)
+            (accuracy, trainable_params) = self.get_metrics_from_replay(net_string)
         else:
             accuracy = 0.0
-            guessing_entropy_at_10_percent = 128
-            guessing_entropy_at_50_percent = 128
-            guessing_entropy_no_to_0 = 255
             trainable_params = 0
 
         return (
             net_string, state_list,
-            accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent, guessing_entropy_no_to_0,
+            accuracy,
             trainable_params
         )
 
@@ -233,53 +228,37 @@ class QLearner:
         # Experience replay to update Q-Values
         for i in range(self.state_space_parameters.replay_number):
             net = np.random.choice(self.replay_dictionary['net'])
-            (accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent, guessing_entropy_no_to_0,
-             trainable_params) = self.get_metrics_from_replay(net)
+            (accuracy, trainable_params) = self.get_metrics_from_replay(net)
             state_list = self.stringutils.convert_model_string_to_states(cnn.parse('net', net))
-
             state_list = self.stringutils.remove_drop_out_states(state_list)
 
             # Convert States so they are bucketed
             state_list = [state.copy() for state in state_list]
 
             self.update_q_value_sequence(state_list, self.metrics_to_reward(
-                accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent,
-                guessing_entropy_no_to_0, trainable_params
+                accuracy, trainable_params
             ), iteration)
 
     def get_metrics_from_replay(self, net):
         net_replay = self.replay_dictionary[self.replay_dictionary['net'] == net]
         accuracy = net_replay['accuracy'].values[0]
-        guessing_entropy_at_10_percent = net_replay['guessing_entropy_at_10_percent'].values[0]
-        guessing_entropy_at_50_percent = net_replay['guessing_entropy_at_50_percent'].values[0]
-        guessing_entropy_no_to_0 = net_replay['guessing_entropy_no_to_0'].values[0]
         trainable_params = net_replay['trainable_parameters'].values[0]
         return (
-            accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent,
-            guessing_entropy_no_to_0, trainable_params
+            accuracy, trainable_params
         )
 
-    def metrics_to_reward(self, accuracy, ge_at_10_percent, ge_at_50_percent, ge_no_to_0, trainable_params):
+    def metrics_to_reward(self, accuracy, trainable_params):
         """How to define reward from network (performance) metrics"""
-        max_reward = 3  # 2 from below line, 1 from ge_no_to_0
+        max_reward = 2  # 2 from below line, 1 from ge_no_to_0
 
-        # R = 0-0.5 + 0-1 + 0-0.5
-        reward = (
-                accuracy * .5  # 0-0.5
-                + (128 - min(ge_at_10_percent, 128)) / 128  # 0-1
-                + (128 - min(ge_at_50_percent, 128)) / (128 * 2)  # 0-0.5
-        )
+        # R = 0-1
+        reward = accuracy
 
-        # The network was successful in the key recovery within the set amount of traces
-        if ge_no_to_0 is not None and not math.isnan(ge_no_to_0):
-            traces_per_attack = self.hyper_parameters.TRACES_PER_ATTACK + 1  # also reward ge of 0 in the max |traces|
-            reward += (traces_per_attack - ge_no_to_0) / traces_per_attack  # R += 0-1
-
+        # R += 0-1
         if self.reward_small:
-            max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD', 20_000_000)
+            max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD', 50_000)
 
             reward += max(0, (max_trainable_params - trainable_params) / max_trainable_params)  # R += 0-1
-            max_reward += 1
 
         return reward / max_reward
 

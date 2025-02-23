@@ -7,6 +7,7 @@ import time
 import traceback
 from datetime import datetime
 from os import path
+import importlib
 
 import cloudpickle
 import numpy as np
@@ -41,10 +42,7 @@ class QCoordinator(object):
 
         self.replay_columns = [
             'net',  # Net String
-            'accuracy',
-            'guessing_entropy_at_10_percent',
-            'guessing_entropy_at_50_percent',
-            'guessing_entropy_no_to_0',
+            'accuracy',  # Accuracy of the network
             'trainable_parameters',  # Amount of trainable params of the network
             'ix_q_value_update',  # Iteration for q value update
             'epsilon',  # For epsilon greedy
@@ -72,8 +70,6 @@ class QCoordinator(object):
         self.list_path = list_path
         self.qlearner = self.load_qlearner()
         self.tf_runner = TensorFlowRunner(self.state_space_parameters, self.hyper_parameters)
-        self.ten_percent_index = self.hyper_parameters.TRACES_PER_ATTACK // 10 - 1
-        self.fifty_percent_index = self.hyper_parameters.TRACES_PER_ATTACK // 2 - 1
 
         while not self.check_reached_limit():
             self.train_new_net()
@@ -100,16 +96,8 @@ class QCoordinator(object):
         (predictions, (test_loss, test_accuracy)), trainable_params = cloudpickle.loads(parent.recv())
         process.join()
 
-        guessing_entropy = self.tf_runner.perform_attacks_parallel(
-            predictions, save_graph=True, filename=f"{self.hyper_parameters.MODEL_NAME}_{iteration:04}",
-            folder=f"{self.hyper_parameters.BULK_ROOT}/graphs"
-        )
-
-        ge_no_to_0 = np.where(guessing_entropy <= 0)[0]
-
         self.incorporate_trained_net(
-            net_to_run, float(test_accuracy), guessing_entropy[self.ten_percent_index],
-            guessing_entropy[self.fifty_percent_index], ge_no_to_0[0] if len(ge_no_to_0) > 0 else None,
+            net_to_run, float(test_accuracy),
             trainable_params, float(self.epsilon), [iteration]
         )
 
@@ -202,8 +190,7 @@ class QCoordinator(object):
 
     def generate_new_network(self):
         try:
-            (net_string, net, accuracy, guessing_entropy_at_10_percent, guessing_entropy_at_50_percent,
-             guessing_entropy_no_to_0, trainable_params) = self.qlearner.generate_net()
+            (net_string, net, accuracy, trainable_params) = self.qlearner.generate_net()
 
             # We have already trained this net
             if net_string in self.replay_dictionary.net.values:
@@ -211,9 +198,6 @@ class QCoordinator(object):
                 self.incorporate_trained_net(
                     net_string,
                     accuracy,
-                    guessing_entropy_at_10_percent,
-                    guessing_entropy_at_50_percent,
-                    guessing_entropy_no_to_0,
                     trainable_params,
                     self.epsilon,
                     [self.q_training_step]
@@ -227,7 +211,7 @@ class QCoordinator(object):
             print(traceback.print_exc())
             sys.exit(1)
 
-    def incorporate_trained_net(self, net_string, accuracy, ge_at_10_percent, ge_at_50_percent, ge_no_to_0,
+    def incorporate_trained_net(self, net_string, accuracy,
                                 trainable_params, epsilon, iterations):
 
         try:
@@ -238,9 +222,6 @@ class QCoordinator(object):
                     pd.DataFrame({
                         'net': [net_string],
                         'accuracy': [accuracy],
-                        'guessing_entropy_at_10_percent': [ge_at_10_percent],
-                        'guessing_entropy_at_50_percent': [ge_at_50_percent],
-                        'guessing_entropy_no_to_0': [ge_no_to_0],
                         'trainable_parameters': [trainable_params],
                         'ix_q_value_update': [train_iter],
                         'epsilon': [epsilon],
@@ -286,16 +267,11 @@ def main():
 
     args = parser.parse_args()
 
-    _model = __import__(
-        'models.' + args.model,
-        globals(),
-        locals(),
-        ['state_space_parameters', 'hyper_parameters'],
-        0
-    )
+    _model = importlib.import_module('models.' + args.model)
+
 
     factory = QCoordinator(
-        path.normpath(path.join(_model.hyper_parameters.BULK_ROOT, "qlearner_logs")),
+        "learner_logs",
         _model.state_space_parameters,
         _model.hyper_parameters,
         args.epsilon,
