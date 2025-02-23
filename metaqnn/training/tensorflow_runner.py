@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from typing import List
 import numpy as np
 from os import path
+from tqdm import tqdm
 
 from metaqnn.grammar.state_enumerator import State
 from metaqnn.attack import utils
@@ -19,24 +20,18 @@ class TensorFlowRunner(object):
     def __init__(self, state_space_parameters, hyper_parameters):
         self.ssp = state_space_parameters
         self.hp = hyper_parameters
-        self.key = self.hp.KEY
-        self.features = self.hp.TRAIN_TRACES
+        self.features = self.hp.TRAIN_DATA
         self.labels = self.hp.TRAIN_LABELS
-        self.attack_features = self.hp.ATTACK_TRACES
-        # Only used for some experiments to use part of attack set as validation set
-        self.attack_labels = getattr(self.hp, 'ATTACK_LABELS', np.ndarray((0, 0)))
-        self.precomputed_byte_values = self.hp.ATTACK_PRECOMPUTED_BYTE_VALUES
+        self.test_features = self.hp.TEST_DATA
+        self.test_labels = self.hp.TEST_LABELS
+        self.validation_features = self.hp.VAL_DATA
+        self.validation_labels = self.hp.VAL_LABELS
 
-        self.split_validation_from_attack = getattr(self.hp, 'VALIDATION_FROM_ATTACK_SET', False)
-
-        scaler = preprocessing.StandardScaler()
-        self.features = scaler.fit_transform(self.features)
-        self.attack_features = scaler.transform(self.attack_features)
-
-        self.features = self.features.reshape((self.features.shape[0], self.features.shape[1], 1))
-        self.attack_features = self.attack_features.reshape(
-            (self.attack_features.shape[0], self.attack_features.shape[1], 1)
-        )
+        self.scaler_ch1 = preprocessing.StandardScaler()
+        self.scaler_ch2 = preprocessing.StandardScaler()
+        self.features = self.scale_data(self.features, train_data=True)
+        self.test_features = self.scale_data(self.test_features, train_data=False)
+        self.validation_features = self.scale_data(self.validation_features, train_data=False)
 
     @staticmethod
     def compile_model(state_list: List[State], loss, metric_list):
@@ -63,53 +58,42 @@ class TensorFlowRunner(object):
         return tf.distribute.MirroredStrategy()
 
     def train_and_predict(self, model, parallel_no=1):
-        features, labels = utils.shuffle_arrays_together(self.features, self.labels)
-        training_features = features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN]
-        training_labels = to_categorical(
-            labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], num_classes=self.hp.NUM_CLASSES
-        )
-
-        if self.split_validation_from_attack:
-            validation_features, validation_labels = utils.shuffle_arrays_together(
-                self.attack_features, self.attack_labels
-            )
-            validation_features = validation_features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL]
-            validation_labels = to_categorical(
-                self.attack_labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL],
-                num_classes=self.hp.NUM_CLASSES
-            )
-        else:
-            validation_features = features[self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN:]
-            validation_labels = to_categorical(
-                labels[self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN:], num_classes=self.hp.NUM_CLASSES
-            )
-
         model.fit(
-            x=training_features, y=training_labels, epochs=self.hp.MAX_EPOCHS,
+            x=self.features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], 
+            y=self.labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], epochs=self.hp.MAX_EPOCHS,
             batch_size=self.hp.TRAIN_BATCH_SIZE * parallel_no,
-            validation_data=(validation_features, validation_labels), shuffle=True, callbacks=[
+            validation_data=(self.validation_features, self.validation_labels), shuffle=True, callbacks=[
                 OneCycleLR(
                     max_lr=self.hp.MAX_LR * parallel_no, end_percentage=0.2, scale_percentage=0.1,
                     maximum_momentum=None,
                     minimum_momentum=None, verbose=True
-                )
+                ),
+                tf.keras.callbacks.EarlyStopping(
+                    monitor = 'val_loss',
+                    patience = 5,
+                    mode='auto',
+                    verbose = 1)
             ]
-        )
+        ) 
 
         return (
             model.predict(self.attack_features),
             model.evaluate(x=validation_features, y=validation_labels, batch_size=self.hp.EVAL_BATCH_SIZE)
         )
+        
+    def scale_data(self, data, train_data: bool):
+        N, H, C = data.shape
+        standardized_data = np.empty_like(data, dtype=np.float32)  # Pre-allocate output array
+        scalers = [self.scaler_ch1, self.scaler_ch2]
 
-    def perform_attacks(self, predictions, save_graph: bool = False, filename: str = None, folder: str = None):
-        return utils.perform_attacks_precomputed_byte_n(
-            self.hp.TRACES_PER_ATTACK, predictions, self.hp.NUM_ATTACKS, self.precomputed_byte_values, self.key,
-            self.hp.ATTACK_KEY_BYTE, shuffle=True, save_graph=save_graph, filename=filename, folder=folder
-        )
+        batch_size = 1000
 
-    def perform_attacks_parallel(self, predictions, save_graph: bool = False, filename: str = None, folder: str = None):
-        return utils.perform_attacks_precomputed_byte_n_parallel(
-            self.hp.TRACES_PER_ATTACK, predictions, self.hp.NUM_ATTACKS, self.precomputed_byte_values, self.key,
-            self.hp.ATTACK_KEY_BYTE, shuffle=True, save_graph=save_graph, filename=filename, folder=folder
-        )
-
+        for channel in range(C):
+            scaler = scalers[channel]
+            for i in tqdm(range(0, N, batch_size), desc=f"Scaling train data channel {channel + 1}"):
+                batch = data[i:min(i+batch_size, N), :, channel]
+                batch_reshaped = batch.reshape(-1, 1)
+                batch_scaled = scaler.fit_transform(batch_reshaped) if train_data else scaler.transform(batch_reshaped)
+                standardized_data[i:min(i+batch_size, N), :, channel] = batch_scaled.reshape(batch.shape)
+        
+        return standardized_data
