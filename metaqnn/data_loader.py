@@ -12,7 +12,7 @@ def load_data(path: str):
         print(f"Error: can't open HDF5 file '{path}' for reading (it might be malformed) ...")
         sys.exit(-1)
     x = file_handle['X'][:]
-    y = np.argmax(file_handle['Y'][:], axis=1)
+    y = file_handle['Y'][:]
     z = file_handle['Z'][:]
     return train_test_split(x, y, z, test_size=0.2, random_state=0)
 
