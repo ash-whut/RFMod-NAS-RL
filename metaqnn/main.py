@@ -13,8 +13,8 @@ import cloudpickle
 import numpy as np
 import pandas as pd
 
-from metaqnn.grammar import q_learner
-from metaqnn.training.tensorflow_runner import TensorFlowRunner
+from grammar import q_learner
+from training.tensorflow_runner import TensorFlowRunner
 
 
 class TermColors(object):
@@ -83,18 +83,12 @@ class QCoordinator(object):
             self.number_models, TermColors.RESET
         ))
 
-        parent, child = mp.Pipe(duplex=False)
-        process = mp.Process(target=self._train_and_predict, args=(
-            cloudpickle.dumps(self.tf_runner),
+        predictions, (test_loss, test_accuracy), trainable_params = self._train_and_predict(
+            self.tf_runner,
             net,
             self.hyper_parameters.MODEL_NAME,
-            iteration,
-            child
-        ))
-
-        process.start()
-        (predictions, (test_loss, test_accuracy)), trainable_params = cloudpickle.loads(parent.recv())
-        process.join()
+            iteration
+        )
 
         self.incorporate_trained_net(
             net_to_run, float(test_accuracy),
@@ -102,8 +96,7 @@ class QCoordinator(object):
         )
 
     @staticmethod
-    def _train_and_predict(tf_runner, net, model_name, iteration, return_pipe):
-        tf_runner = cloudpickle.loads(tf_runner)
+    def _train_and_predict(tf_runner, net, model_name, iteration):
         strategy = tf_runner.get_strategy()
         parallel_no = strategy.num_replicas_in_sync
         if parallel_no is None:
@@ -114,12 +107,11 @@ class QCoordinator(object):
             model.summary()
             trainable_params = tf_runner.count_trainable_params(model)
 
-            return_pipe.send(cloudpickle.dumps((
-                tf_runner.train_and_predict(model, parallel_no),
-                trainable_params
-            )))
+            predictions, (test_loss, test_accuracy) = tf_runner.train_and_predict(model, parallel_no)
 
         model.save(path.normpath(f"{tf_runner.hp.TRAINED_MODEL_DIR}/{model_name}_{iteration:04}.h5"))
+
+        return predictions, (test_loss, test_accuracy), trainable_params
 
     def load_replay(self):
         if os.path.isfile(self.replay_dictionary_path):
@@ -267,7 +259,7 @@ def main():
 
     args = parser.parse_args()
 
-    _model = importlib.import_module('models.' + args.model)
+    _model = importlib.import_module("models." + args.model)
 
 
     factory = QCoordinator(
