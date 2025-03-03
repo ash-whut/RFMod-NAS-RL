@@ -16,6 +16,8 @@ import pandas as pd
 from grammar import q_learner
 from training.tensorflow_runner import TensorFlowRunner
 
+import psutil
+import gc
 
 class TermColors(object):
     HEADER = '\033[95m'
@@ -43,6 +45,7 @@ class QCoordinator(object):
         self.replay_columns = [
             'net',  # Net String
             'accuracy',  # Accuracy of the network
+            'best_accuracy',  # Best accuracy of the network
             'trainable_parameters',  # Amount of trainable params of the network
             'ix_q_value_update',  # Iteration for q value update
             'epsilon',  # For epsilon greedy
@@ -71,47 +74,59 @@ class QCoordinator(object):
         self.qlearner = self.load_qlearner()
         self.tf_runner = TensorFlowRunner(self.state_space_parameters, self.hyper_parameters)
 
+        self.best_accuracy = 0
+        self.best_iteration = 0
+        
         while not self.check_reached_limit():
             self.train_new_net()
 
         print('{}{}Experiment Complete{}'.format(TermColors.BOLD, TermColors.OKGREEN, TermColors.RESET))
-
+    
     def train_new_net(self):
-        net, net_to_run, iteration = self.generate_new_network()
+        process = psutil.Process(os.getpid())
+        print(f"Memory usage: {process.memory_info().rss / 1024**3:.2f} GB")
+        net, net_to_run, iteration = self.generate_new_network()     
         print('{}Training net:\n{}\nIteration {:d}, Epsilon {:f}: [Network {:d}/{:d}]{}'.format(
             TermColors.OKBLUE, net_to_run, iteration, self.epsilon, self.number_trained_unique(self.epsilon),
             self.number_models, TermColors.RESET
         ))
 
-        predictions, (test_loss, test_accuracy), trainable_params = self._train_and_predict(
+        predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy), trainable_params, model = self._train_and_predict(
             self.tf_runner,
             net,
             self.hyper_parameters.MODEL_NAME,
             iteration
         )
 
-        self.incorporate_trained_net(
-            net_to_run, float(test_accuracy),
-            trainable_params, float(self.epsilon), [iteration]
-        )
+        if (test_accuracy > self.best_accuracy) and (iteration > self.best_iteration):
+            os.remove(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{self.best_iteration:04}.keras")) if self.best_iteration > 0 else None
+            model.save(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{iteration:04}.keras"))
 
+            self.best_accuracy = test_accuracy
+            self.best_iteration = iteration
+
+        self.incorporate_trained_net(
+            net_to_run, 
+            float(test_accuracy),
+            float(best_case_accuracy),
+            trainable_params, 
+            float(self.epsilon), 
+            [iteration]
+        )
+        
+        TensorFlowRunner.clear_session()
+        gc.collect()
+
+        
     @staticmethod
     def _train_and_predict(tf_runner, net, model_name, iteration):
-        strategy = tf_runner.get_strategy()
-        parallel_no = strategy.num_replicas_in_sync
-        if parallel_no is None:
-            parallel_no = 1
+        model = tf_runner.compile_model(net, loss='categorical_crossentropy', metric_list=['accuracy'])
+        model.summary()
+        trainable_params = tf_runner.count_trainable_params(model)
 
-        with strategy.scope():
-            model = tf_runner.compile_model(net, loss='categorical_crossentropy', metric_list=['accuracy'])
-            model.summary()
-            trainable_params = tf_runner.count_trainable_params(model)
+        predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy) = tf_runner.train_and_predict(model)
 
-            predictions, (test_loss, test_accuracy) = tf_runner.train_and_predict(model, parallel_no)
-
-        model.save(path.normpath(f"{tf_runner.hp.TRAINED_MODEL_DIR}/{model_name}_{iteration:04}.h5"))
-
-        return predictions, (test_loss, test_accuracy), trainable_params
+        return predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy), trainable_params, model
 
     def load_replay(self):
         if os.path.isfile(self.replay_dictionary_path):
@@ -182,7 +197,7 @@ class QCoordinator(object):
 
     def generate_new_network(self):
         try:
-            (net_string, net, accuracy, trainable_params) = self.qlearner.generate_net()
+            (net_string, net, accuracy, best_accuracy, trainable_params) = self.qlearner.generate_net()
 
             # We have already trained this net
             if net_string in self.replay_dictionary.net.values:
@@ -190,6 +205,7 @@ class QCoordinator(object):
                 self.incorporate_trained_net(
                     net_string,
                     accuracy,
+                    best_accuracy,
                     trainable_params,
                     self.epsilon,
                     [self.q_training_step]
@@ -203,7 +219,7 @@ class QCoordinator(object):
             print(traceback.print_exc())
             sys.exit(1)
 
-    def incorporate_trained_net(self, net_string, accuracy,
+    def incorporate_trained_net(self, net_string, accuracy, best_accuracy,
                                 trainable_params, epsilon, iterations):
 
         try:
@@ -214,6 +230,7 @@ class QCoordinator(object):
                     pd.DataFrame({
                         'net': [net_string],
                         'accuracy': [accuracy],
+                        'best_accuracy': [best_accuracy],
                         'trainable_parameters': [trainable_params],
                         'ix_q_value_update': [train_iter],
                         'epsilon': [epsilon],
@@ -226,11 +243,9 @@ class QCoordinator(object):
             for train_iter in iterations:
                 self.qlearner.sample_replay_for_update(train_iter)
             self.qlearner.save_q(self.list_path)
-            if ge_no_to_0 is None or math.isnan(ge_no_to_0):
-                ge_no_to_0 = "∞"
 
-            print('{}Incorporated net, acc: {:f}, t_GE <= 0: {}, net(trainable_params={}):\n{}{}'.format(
-                TermColors.YELLOW, accuracy, ge_no_to_0, trainable_params, net_string, TermColors.RESET
+            print('{}Incorporated net, acc: {:f}, best_acc: {:f}, net(trainable_params={}):\n{}{}'.format(
+                TermColors.YELLOW, accuracy, best_accuracy, trainable_params, net_string, TermColors.RESET
             ))
         except Exception:
             print(traceback.print_exc())
@@ -239,7 +254,7 @@ class QCoordinator(object):
 def main():
     parser = argparse.ArgumentParser()
 
-    model_pkgpath = 'models'
+    model_pkgpath = '/home/ashwin/repos/Reinforcement-Learning-for-SCA/metaqnn/models'
     model_choices = next(os.walk(model_pkgpath))[1]
 
     parser.add_argument(

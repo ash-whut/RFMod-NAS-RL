@@ -16,5 +16,9 @@ def load_data(path: str):
     z = file_handle['Z'][:]
     return train_test_split(x, y, z, test_size=0.2, random_state=0)
 
-def validation_data(x_tst: tuple, y_tst: tuple):
-    return train_test_split(x_tst, y_tst, test_size=0.5, random_state=0)
+def val_data_split(X, Y, Z):
+    return train_test_split(X, Y, Z, test_size = 0.5, random_state=0)
+
+def best_snr_data(X, Y, Z):
+    best_snr_indices = np.where(np.any(Z == 30, axis=1))
+    return X[best_snr_indices], Y[best_snr_indices]
