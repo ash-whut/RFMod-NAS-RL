@@ -11,10 +11,11 @@ from training.one_cycle_lr import OneCycleLR
 
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import backend as K
 from sklearn import preprocessing
 
+import psutil
+import os
 
 class TensorFlowRunner(object):
     def __init__(self, state_space_parameters, hyper_parameters):
@@ -26,13 +27,15 @@ class TensorFlowRunner(object):
         self.test_labels = self.hp.TEST_LABELS
         self.validation_features = self.hp.VAL_DATA
         self.validation_labels = self.hp.VAL_LABELS
+        self.best_snr_val_features = self.hp.BEST_SNR_VAL_DATA
+        self.best_snr_val_labels = self.hp.BEST_SNR_VAL_LABELS
 
         self.scaler_ch1 = preprocessing.StandardScaler()
         self.scaler_ch2 = preprocessing.StandardScaler()
-        self.features = self.scale_data(self.features, train_data=True)
-        self.test_features = self.scale_data(self.test_features, train_data=False)
-        self.validation_features = self.scale_data(self.validation_features, train_data=False)
-        print(self.features)
+        self.features = self.scale_data(self.features, True)
+        self.test_features = self.scale_data(self.test_features, False)
+        self.validation_features = self.scale_data(self.validation_features, False)
+        self.best_snr_val_features = self.scale_data(self.best_snr_val_features, False)
 
     @staticmethod
     def compile_model(state_list: List[State], loss, metric_list):
@@ -43,7 +46,9 @@ class TensorFlowRunner(object):
         model = tf.keras.Sequential()
         for state in state_list:
             model.add(state.to_tensorflow_layer())
-        model.compile(optimizer=_optimizer, loss=loss, metrics=metric_list)
+        model.compile(optimizer=_optimizer, 
+                      loss=loss, 
+                      metrics=metric_list)
         return model
 
     @staticmethod
@@ -59,37 +64,40 @@ class TensorFlowRunner(object):
         return tf.distribute.MirroredStrategy()
 
     def train_and_predict(self, model, parallel_no=1):
-        print("Training started")
-        print("Training labels shape: ", self.labels.shape)
-        print("Validation labels shape", self.validation_labels.shape)
+        process = psutil.Process(os.getpid())
+        print(f"Memory usage: {process.memory_info().rss / 1024**3:.2f} GB")
         model.fit(
-            x=self.features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], 
-            y=self.labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], epochs=self.hp.MAX_EPOCHS,
+            # x=self.features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], 
+            x=self.features,
+            # y=self.labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], epochs=self.hp.MAX_EPOCHS,
+            y=self.labels,
             batch_size=self.hp.TRAIN_BATCH_SIZE * parallel_no,
-            validation_data=(self.validation_features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL], 
-                             self.validation_labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL]), shuffle=True, callbacks=[
+            epochs=self.hp.MAX_EPOCHS,
+            validation_data=(self.validation_features, 
+                             self.validation_labels), 
+            callbacks=[
                 OneCycleLR(
                     max_lr=self.hp.MAX_LR * parallel_no, end_percentage=0.2, scale_percentage=0.1,
                     maximum_momentum=None,
                     minimum_momentum=None, verbose=True
                 ),
                 tf.keras.callbacks.EarlyStopping(
-                    monitor = 'loss',
+                    monitor = 'val_loss',
                     patience = 5,
                     mode='auto',
                     verbose = 1)
-            ]
+            ],
+            verbose=2
         ) 
-        print("Training finished")
 
         return (
             model.predict(self.test_features),
-            model.evaluate(x=self.validation_features, y=self.validation_labels, batch_size=self.hp.EVAL_BATCH_SIZE)
+            model.evaluate(x=self.validation_features, y=self.validation_labels, batch_size=self.hp.EVAL_BATCH_SIZE),
+            model.evaluate(x=self.best_snr_val_features, y=self.best_snr_val_labels, batch_size=self.hp.EVAL_BATCH_SIZE)
         )
-        
+    
     def scale_data(self, data, train_data: bool):
         N, H, C = data.shape
-        standardized_data = np.empty_like(data, dtype=np.float32)  # Pre-allocate output array
         scalers = [self.scaler_ch1, self.scaler_ch2]
 
         batch_size = 1000
@@ -100,6 +108,6 @@ class TensorFlowRunner(object):
                 batch = data[i:min(i+batch_size, N), :, channel]
                 batch_reshaped = batch.reshape(-1, 1)
                 batch_scaled = scaler.fit_transform(batch_reshaped) if train_data else scaler.transform(batch_reshaped)
-                standardized_data[i:min(i+batch_size, N), :, channel] = batch_scaled.reshape(batch.shape)
+                data[i:min(i+batch_size, N), :, channel] = batch_scaled.reshape(batch.shape)
         
-        return standardized_data
+        return data
