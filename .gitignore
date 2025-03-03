@@ -1,4 +1,6 @@
 **checkpoint**
 *.pyc
 *.h5
+**trained_model**
 *.csv
+*.vscode
