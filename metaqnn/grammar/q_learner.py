@@ -136,7 +136,7 @@ class QLearner:
 
     def __init__(self, hyper_parameters, state_space_parameters, epsilon, state=None, qstore=None,
                  replay_dictionary=pd.DataFrame(columns=[
-                     'net', 'accuracy', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
+                     'net', 'accuracy', 'best_accuracy', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
                  ]), reward_small=False):
 
         self.state_list = []
@@ -169,14 +169,16 @@ class QLearner:
 
         # Check if we have already trained this model
         if net_string in self.replay_dictionary['net'].values:
-            (accuracy, trainable_params) = self.get_metrics_from_replay(net_string)
+            (accuracy, best_accuracy, trainable_params) = self.get_metrics_from_replay(net_string)
         else:
             accuracy = 0.0
+            best_accuracy = 0.0
             trainable_params = 0
 
         return (
             net_string, state_list,
             accuracy,
+            best_accuracy,
             trainable_params
         )
 
@@ -228,7 +230,7 @@ class QLearner:
         # Experience replay to update Q-Values
         for i in range(self.state_space_parameters.replay_number):
             net = np.random.choice(self.replay_dictionary['net'])
-            (accuracy, trainable_params) = self.get_metrics_from_replay(net)
+            (accuracy, best_accuracy, trainable_params) = self.get_metrics_from_replay(net)
             state_list = self.stringutils.convert_model_string_to_states(cnn.parse('net', net))
             state_list = self.stringutils.remove_drop_out_states(state_list)
 
@@ -242,25 +244,28 @@ class QLearner:
     def get_metrics_from_replay(self, net):
         net_replay = self.replay_dictionary[self.replay_dictionary['net'] == net]
         accuracy = net_replay['accuracy'].values[0]
+        best_accuracy = net_replay['best_accuracy'].values[0]
         trainable_params = net_replay['trainable_parameters'].values[0]
         return (
-            accuracy, trainable_params
+            accuracy, best_accuracy, trainable_params
         )
 
     def metrics_to_reward(self, accuracy, trainable_params):
         """How to define reward from network (performance) metrics"""
-        max_reward = 2  # 2 from below line, 1 from ge_no_to_0
+        # max_reward = 2  
 
         # R = 0-1
+        # Reward from accuracy
         reward = accuracy
 
-        # R += 0-1
-        if self.reward_small:
-            max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD', 50_000)
+        # # R += 0-1
+        # # Reward from number of trainable parameters
+        # if self.reward_small:
+        #     max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD', 50_000)
 
-            reward += max(0, (max_trainable_params - trainable_params) / max_trainable_params)  # R += 0-1
+        #     reward += max(0, (max_trainable_params - trainable_params) / max_trainable_params)  # R += 0-1
 
-        return reward / max_reward
+        return reward
 
     def update_q_value_sequence(self, states, termination_reward, iteration):
         """Update all Q-Values for a sequence."""
