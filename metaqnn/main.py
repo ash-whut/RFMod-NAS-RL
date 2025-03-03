@@ -74,8 +74,7 @@ class QCoordinator(object):
         self.qlearner = self.load_qlearner()
         self.tf_runner = TensorFlowRunner(self.state_space_parameters, self.hyper_parameters)
 
-        self.best_accuracy = 0
-        self.best_iteration = 0
+        self.best_accuracies_and_iterations = []
         
         while not self.check_reached_limit():
             self.train_new_net()
@@ -95,15 +94,13 @@ class QCoordinator(object):
             self.tf_runner,
             net,
             self.hyper_parameters.MODEL_NAME,
-            iteration
+            iteration,
+            self.hyper_parameters.MAX_LR
         )
-
-        if (test_accuracy > self.best_accuracy) and (iteration > self.best_iteration):
-            os.remove(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{self.best_iteration:04}.keras")) if self.best_iteration > 0 else None
-            model.save(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{iteration:04}.keras"))
-
-            self.best_accuracy = test_accuracy
-            self.best_iteration = iteration
+        
+        if not self.best_accuracies_and_iterations or test_accuracy > self.best_accuracies_and_iterations[-1][1]:
+            self.remove_least_accurate_model_if_needed()
+            self.save_best_performing_model(model, iteration, test_accuracy)
 
         self.incorporate_trained_net(
             net_to_run, 
@@ -119,8 +116,8 @@ class QCoordinator(object):
 
         
     @staticmethod
-    def _train_and_predict(tf_runner, net, model_name, iteration):
-        model = tf_runner.compile_model(net, loss='categorical_crossentropy', metric_list=['accuracy'])
+    def _train_and_predict(tf_runner, net, model_name, iteration, lr):
+        model = tf_runner.compile_model(net, loss='categorical_crossentropy', metric_list=['accuracy'], lr=lr)
         model.summary()
         trainable_params = tf_runner.count_trainable_params(model)
 
@@ -249,7 +246,14 @@ class QCoordinator(object):
             ))
         except Exception:
             print(traceback.print_exc())
+            
+    def remove_least_accurate_model_if_needed(self):
+        os.remove(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{self.best_accuracies_and_iterations[0][0]:04}.keras")) and \
+            self.best_accuracies_and_iterations.pop(0) if (len(self.best_accuracies_and_iterations) == 5) else None
 
+    def save_best_performing_model(self, model, iteration, accuracy):
+            self.best_accuracies_and_iterations.append((accuracy, iteration))
+            model.save(path.normpath(f"{self.tf_runner.hp.TRAINED_MODEL_DIR}/{self.hyper_parameters.MODEL_NAME}_{iteration:04}.keras"))
 
 def main():
     parser = argparse.ArgumentParser()

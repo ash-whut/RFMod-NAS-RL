@@ -252,20 +252,24 @@ class QLearner:
 
     def metrics_to_reward(self, accuracy, trainable_params):
         """How to define reward from network (performance) metrics"""
-        # max_reward = 2  
+        max_reward = 2  
 
+        ## Rewards
         # R = 0-1
         # Reward from accuracy
         reward = accuracy
+        
+        # R = 0-0.2
+        # Reward from number of trainable parameters
+        max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD')
+        reward += (max(0, (max_trainable_params - trainable_params) / max_trainable_params)) * 0.2
+        
+        ## Punishments
+        # P = -0.5 -> 0
+        min_accuracy = getattr(self.hyper_parameters, 'MIN_ACCURACY')
+        reward -= max(0, (min_accuracy - accuracy))
 
-        # # R += 0-1
-        # # Reward from number of trainable parameters
-        # if self.reward_small:
-        #     max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD', 50_000)
-
-        #     reward += max(0, (max_trainable_params - trainable_params) / max_trainable_params)  # R += 0-1
-
-        return reward
+        return reward / max_reward
 
     def update_q_value_sequence(self, states, termination_reward, iteration):
         """Update all Q-Values for a sequence."""

@@ -12,21 +12,19 @@ INPUT_SIZE = 1024
 
 # Batch Queue parameters
 TRAIN_BATCH_SIZE = 2048  # Batch size for training (scaled linearly with number of gpus used)
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 1500000  # Number of training examples
 EVAL_BATCH_SIZE = TRAIN_BATCH_SIZE  # Batch size for validation
-# NUM_EXAMPLES_PER_EPOCH_FOR_EVAL =   # Number of validation examples
-
 
 TEST_INTERVAL_EPOCHS = 1  # Num epochs to test on, should really always be 1
 MAX_EPOCHS = 50  # Max number of epochs to train model
 
 # Training Parameters
 OPTIMIZER = 'Adam'  # Optimizer (should be in caffe format string)
-MAX_LR = 5e-3  # The max LR (scaled linearly with number of gpus used)
+MAX_LR = 1e-4  # The max LR (scaled linearly with number of gpus used)
 
 # Reward small parameter
 # This rewards networks smaller than this number of trainable parameters
-MAX_TRAINABLE_PARAMS_FOR_REWARD = 65000
+MAX_TRAINABLE_PARAMS_FOR_REWARD = 2000
+MIN_ACCURACY = 0.5
 
 TRAIN_DATA, TEST_DATA, TRAIN_LABELS, TEST_LABELS, TRAIN_SNRS, TEST_SNRS =  load_data(DATASET_PATH)
 VAL_DATA, TEST_DATA, VAL_LABELS, TEST_LABELS, VAL_SNRS, TEST_SNRS = val_data_split(TEST_DATA, TEST_LABELS, TEST_SNRS)

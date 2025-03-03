@@ -38,8 +38,8 @@ class TensorFlowRunner(object):
         self.best_snr_val_features = self.scale_data(self.best_snr_val_features, False)
 
     @staticmethod
-    def compile_model(state_list: List[State], loss, metric_list):
-        _optimizer = Adam()  # Learning rate will be handled by OneCycleLR policy
+    def compile_model(state_list: List[State], loss, metric_list, lr):
+        _optimizer = Adam(lr = lr)
         if len(state_list) < 1:
             raise Exception("Illegal neural net")  # TODO create clearer/better exception (class)
 
