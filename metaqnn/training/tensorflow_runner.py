@@ -60,26 +60,12 @@ class TensorFlowRunner(object):
         process = psutil.Process(os.getpid())
         print(f"Memory usage: {process.memory_info().rss / 1024**3:.2f} GB")
         model.fit(
-            # x=self.features[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], 
             x=self.features,
-            # y=self.labels[:self.hp.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN], epochs=self.hp.MAX_EPOCHS,
             y=self.labels,
             batch_size=self.hp.TRAIN_BATCH_SIZE * parallel_no,
             epochs=self.hp.MAX_EPOCHS,
             validation_data=(self.validation_features, 
-                             self.validation_labels), 
-            callbacks=[
-                OneCycleLR(
-                    max_lr=self.hp.MAX_LR * parallel_no, end_percentage=0.2, scale_percentage=0.1,
-                    maximum_momentum=None,
-                    minimum_momentum=None, verbose=True
-                ),
-                tf.keras.callbacks.EarlyStopping(
-                    monitor = 'val_loss',
-                    patience = 5,
-                    mode='auto',
-                    verbose = 1)
-            ],
+                             self.validation_labels),
             verbose=2
         ) 
 
