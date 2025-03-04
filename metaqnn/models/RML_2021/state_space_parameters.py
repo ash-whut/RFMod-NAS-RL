@@ -1,10 +1,10 @@
 output_states = 24  # Number of Classes/Output layer size
 input_size = 1024  # Amount of measurements before they enter network/input layer size
 
-layer_limit = 14  # Max number of layers
+layer_limit = 28  # Max number of layers
 
 # Transition Options
-possible_conv_depths = [2, 4, 8]  # Choices for number of filters in a convolutional layer
+possible_conv_depths = [2, 4, 8, 16, 32, 64]  # Choices for number of filters in a convolutional layer
 possible_conv_sizes = [1, 2]  # Choices for kernel size
 possible_pool_sizes = [2, 4]  # Choices for filter_size for an average pooling layer
 possible_pool_strides = possible_pool_sizes  # Choices for stride for an average pooling layer
@@ -23,7 +23,7 @@ conv_padding = 'SAME'  # set to 'SAME' (recommended) to pad convolutions so inpu
 # Epsilon schedule for q learning agent.
 # Format : [[epsilon, # unique models]]
 # Epsilon = 1.0 corresponds to fully random, 0.0 to fully greedy
-epsilon_schedule = [[1.0, 200],
+epsilon_schedule = [[1.0, 300],
                     [0.8, 50],
                     [0.6, 70],
                     [0.4, 70],
