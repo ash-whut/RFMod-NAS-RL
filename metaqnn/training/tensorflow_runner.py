@@ -30,13 +30,6 @@ class TensorFlowRunner(object):
         self.best_snr_val_features = self.hp.BEST_SNR_VAL_DATA
         self.best_snr_val_labels = self.hp.BEST_SNR_VAL_LABELS
 
-        self.scaler_ch1 = preprocessing.StandardScaler()
-        self.scaler_ch2 = preprocessing.StandardScaler()
-        self.features = self.scale_data(self.features, True)
-        self.test_features = self.scale_data(self.test_features, False)
-        self.validation_features = self.scale_data(self.validation_features, False)
-        self.best_snr_val_features = self.scale_data(self.best_snr_val_features, False)
-
     @staticmethod
     def compile_model(state_list: List[State], loss, metric_list, lr):
         _optimizer = Adam(lr = lr)
@@ -95,19 +88,3 @@ class TensorFlowRunner(object):
             model.evaluate(x=self.validation_features, y=self.validation_labels, batch_size=self.hp.EVAL_BATCH_SIZE),
             model.evaluate(x=self.best_snr_val_features, y=self.best_snr_val_labels, batch_size=self.hp.EVAL_BATCH_SIZE)
         )
-    
-    def scale_data(self, data, train_data: bool):
-        N, H, C = data.shape
-        scalers = [self.scaler_ch1, self.scaler_ch2]
-
-        batch_size = 1000
-
-        for channel in range(C):
-            scaler = scalers[channel]
-            for i in tqdm(range(0, N, batch_size), desc=f"Scaling train data channel {channel + 1}"):
-                batch = data[i:min(i+batch_size, N), :, channel]
-                batch_reshaped = batch.reshape(-1, 1)
-                batch_scaled = scaler.fit_transform(batch_reshaped) if train_data else scaler.transform(batch_reshaped)
-                data[i:min(i+batch_size, N), :, channel] = batch_scaled.reshape(batch.shape)
-        
-        return data
