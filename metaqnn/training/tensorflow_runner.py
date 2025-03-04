@@ -52,10 +52,6 @@ class TensorFlowRunner(object):
     def count_trainable_params(model):
         return np.sum([K.count_params(w) for w in model.trainable_weights])
 
-    @staticmethod
-    def get_strategy():
-        return tf.distribute.MirroredStrategy()
-
     def train_and_predict(self, model, parallel_no=1):
         process = psutil.Process(os.getpid())
         print(f"Memory usage: {process.memory_info().rss / 1024**3:.2f} GB")
