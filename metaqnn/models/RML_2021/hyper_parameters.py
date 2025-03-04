@@ -2,10 +2,10 @@ from data_loader import *
 import numpy as np
 
 MODEL_NAME = 'RML_2021'
-DATASET_PATH = '/home/ashwin/datasets/2018.01/GOLD_XYZ_OSC.0001_1024.hdf5'
+DATASET_PATH = '/home/ashwin/datasets/RADIOML_2021_07_INT8.hdf5'
 
 # Number of output neurons
-NUM_CLASSES = 24  # Number of output neurons
+NUM_CLASSES = 27  # Number of output neurons
 
 # Input Size
 INPUT_SIZE = 1024
@@ -15,7 +15,7 @@ TRAIN_BATCH_SIZE = 2048  # Batch size for training (scaled linearly with number 
 EVAL_BATCH_SIZE = TRAIN_BATCH_SIZE  # Batch size for validation
 
 TEST_INTERVAL_EPOCHS = 1  # Num epochs to test on, should really always be 1
-MAX_EPOCHS = 50  # Max number of epochs to train model
+MAX_EPOCHS = 100  # Max number of epochs to train model
 
 # Training Parameters
 OPTIMIZER = 'Adam'  # Optimizer (should be in caffe format string)
@@ -23,7 +23,7 @@ MAX_LR = 1e-4  # The max LR (scaled linearly with number of gpus used)
 
 # Reward small parameter
 # This rewards networks smaller than this number of trainable parameters
-MAX_TRAINABLE_PARAMS_FOR_REWARD = 2000
+MAX_TRAINABLE_PARAMS_FOR_REWARD = 50000
 MIN_ACCURACY = 0.5
 
 TRAIN_DATA, TEST_DATA, TRAIN_LABELS, TEST_LABELS, TRAIN_SNRS, TEST_SNRS =  load_data(DATASET_PATH)

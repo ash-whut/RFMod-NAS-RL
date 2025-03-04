@@ -1,4 +1,4 @@
-output_states = 24  # Number of Classes/Output layer size
+output_states = 27  # Number of Classes/Output layer size
 input_size = 1024  # Amount of measurements before they enter network/input layer size
 
 layer_limit = 28  # Max number of layers
@@ -23,7 +23,7 @@ conv_padding = 'SAME'  # set to 'SAME' (recommended) to pad convolutions so inpu
 # Epsilon schedule for q learning agent.
 # Format : [[epsilon, # unique models]]
 # Epsilon = 1.0 corresponds to fully random, 0.0 to fully greedy
-epsilon_schedule = [[1.0, 300],
+epsilon_schedule = [[1.0, 500],
                     [0.8, 50],
                     [0.6, 70],
                     [0.4, 70],
