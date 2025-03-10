@@ -4,3 +4,7 @@
 **trained_model**
 *.csv
 *.vscode
+# pixi environments
+.pixi
+*.egg-info
+pixi.*
