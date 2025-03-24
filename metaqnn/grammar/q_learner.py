@@ -135,9 +135,7 @@ class QLearner:
     """
 
     def __init__(self, hyper_parameters, state_space_parameters, epsilon, state=None, qstore=None,
-                 replay_dictionary=pd.DataFrame(columns=[
-                     'net', 'accuracy', 'best_accuracy', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
-                 ]), reward_small=False):
+                 replay_dictionary=None, reward_small=False):
 
         self.state_list = []
 
@@ -157,6 +155,10 @@ class QLearner:
 
         self.epsilon = epsilon  # epsilon: parameter for epsilon greedy strategy
         self.reward_small = reward_small
+        
+        self.replay_dictionary = pd.DataFrame(columns=[
+                     'net', 'accuracy', 'best_accuracy', 'trainable_parameters', 'ix_q_value_update', 'epsilon', 'time_finished'
+                 ]) if replay_dictionary is None else replay_dictionary
 
     def update_replay_database(self, new_replay_dic):
         self.replay_dictionary = new_replay_dic
@@ -251,25 +253,16 @@ class QLearner:
         )
 
     def metrics_to_reward(self, accuracy, trainable_params):
-        """How to define reward from network (performance) metrics"""
-        max_reward = 2  
+        """How to define reward from network (performance) metrics"""  
 
-        ## Rewards
-        # R = 0-1
         # Reward from accuracy
-        reward = accuracy
+        reward = accuracy ** 2
         
         # R = 0-0.2
         # Reward from number of trainable parameters
-        max_trainable_params = getattr(self.hyper_parameters, 'MAX_TRAINABLE_PARAMS_FOR_REWARD')
-        reward += (max(0, (max_trainable_params - trainable_params) / max_trainable_params)) * 0.2
-        
-        ## Punishments
-        # P = -0.5 -> 0
-        min_accuracy = getattr(self.hyper_parameters, 'MIN_ACCURACY')
-        reward -= max(0, (min_accuracy - accuracy))
+        reward = reward / (trainable_params ** 0.25)
 
-        return reward / max_reward
+        return reward
 
     def update_q_value_sequence(self, states, termination_reward, iteration):
         """Update all Q-Values for a sequence."""

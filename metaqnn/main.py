@@ -1,5 +1,4 @@
 import argparse
-import math
 import multiprocessing as mp
 import os
 import sys
@@ -8,9 +7,8 @@ import traceback
 from datetime import datetime
 from os import path
 import importlib
+import tensorflow as tf
 
-import cloudpickle
-import numpy as np
 import pandas as pd
 
 from grammar import q_learner
@@ -29,7 +27,6 @@ class TermColors(object):
     RESET = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
 
 class QCoordinator(object):
     def __init__(self,
@@ -97,10 +94,10 @@ class QCoordinator(object):
             iteration,
             self.hyper_parameters.MAX_LR
         )
-        
-        if not self.best_accuracies_and_iterations or test_accuracy > self.best_accuracies_and_iterations[-1][1]:
-            self.remove_least_accurate_model_if_needed()
-            self.save_best_performing_model(model, iteration, test_accuracy)
+
+        # if not self.best_accuracies_and_iterations or test_accuracy > self.best_accuracies_and_iterations[-1][1]:
+        #     self.remove_least_accurate_model_if_needed()
+        #     self.save_best_performing_model(model, iteration, test_accuracy)
 
         self.incorporate_trained_net(
             net_to_run, 
@@ -110,7 +107,7 @@ class QCoordinator(object):
             float(self.epsilon), 
             [iteration]
         )
-        
+            
         TensorFlowRunner.clear_session()
         gc.collect()
 
@@ -121,7 +118,7 @@ class QCoordinator(object):
         model.summary()
         trainable_params = tf_runner.count_trainable_params(model)
 
-        predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy) = tf_runner.train_and_predict(model)
+        predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy) = tf_runner.train_and_predict(model, iteration)
 
         return predictions, (test_loss, test_accuracy), (best_case_loss, best_case_accuracy), trainable_params, model
 
@@ -280,6 +277,7 @@ def main():
 
     _model = importlib.import_module("models." + args.model)
 
+    
 
     factory = QCoordinator(
         "learner_logs",

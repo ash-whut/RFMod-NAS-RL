@@ -8,3 +8,5 @@
 .pixi
 *.egg-info
 pixi.*
+# learner logs
+learner_logs

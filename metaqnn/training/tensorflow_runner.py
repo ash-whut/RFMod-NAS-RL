@@ -6,13 +6,14 @@ from os import path
 from tqdm import tqdm
 
 from grammar.state_enumerator import State
-from attack import utils
 from training.one_cycle_lr import OneCycleLR
 
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback, EarlyStopping, TensorBoard
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
 from sklearn import preprocessing
+from sklearn.metrics import classification_report
 
 import psutil
 import os
@@ -52,7 +53,7 @@ class TensorFlowRunner(object):
     def count_trainable_params(model):
         return np.sum([K.count_params(w) for w in model.trainable_weights])
 
-    def train_and_predict(self, model, parallel_no=1):
+    def train_and_predict(self, model, model_iteration, parallel_no=1):
         process = psutil.Process(os.getpid())
         print(f"Memory usage: {process.memory_info().rss / 1024**3:.2f} GB")
         model.fit(
@@ -61,8 +62,21 @@ class TensorFlowRunner(object):
             batch_size=self.hp.TRAIN_BATCH_SIZE * parallel_no,
             epochs=self.hp.MAX_EPOCHS,
             validation_data=(self.validation_features, 
-                             self.validation_labels),
-            verbose=2
+                            self.validation_labels),
+            verbose=1,
+            callbacks=[
+                OneCycleLR(
+                    max_lr=self.hp.MAX_LR * parallel_no, end_percentage=0.2, scale_percentage=0.1,
+                    maximum_momentum=None,
+                    minimum_momentum=None, verbose=True),
+                EarlyStopping(
+                    monitor='val_loss',
+                    patience=5,
+                    verbose=1),
+                TensorBoard(
+                    log_dir=path.join('learner_logs/models', str(model_iteration)),
+                    histogram_freq=1,
+                    profile_batch=0)]
         ) 
 
         return (
