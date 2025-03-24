@@ -15,7 +15,7 @@ TRAIN_BATCH_SIZE = 2048  # Batch size for training (scaled linearly with number 
 EVAL_BATCH_SIZE = TRAIN_BATCH_SIZE  # Batch size for validation
 
 TEST_INTERVAL_EPOCHS = 1  # Num epochs to test on, should really always be 1
-MAX_EPOCHS = 100  # Max number of epochs to train model
+MAX_EPOCHS = 15  # Max number of epochs to train model
 
 # Training Parameters
 OPTIMIZER = 'Adam'  # Optimizer (should be in caffe format string)

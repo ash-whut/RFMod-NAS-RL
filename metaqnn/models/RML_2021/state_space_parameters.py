@@ -10,7 +10,7 @@ possible_pool_sizes = [2, 4]  # Choices for filter_size for an average pooling l
 possible_pool_strides = possible_pool_sizes  # Choices for stride for an average pooling layer
 max_fc = 3  # Maximum number of fully connected layers (excluding final FC layer for softmax output)
 # Possible number of neurons in a fully connected layer
-possible_fc_sizes = [2, 4, 8]
+possible_fc_sizes = [2, 4, 8, 16]
 
 allow_initial_pooling = False  # Allow pooling as the first layer
 init_utility = 0.3  # Set this to around the performance of an average model. It is better to undershoot this
@@ -23,16 +23,16 @@ conv_padding = 'SAME'  # set to 'SAME' (recommended) to pad convolutions so inpu
 # Epsilon schedule for q learning agent.
 # Format : [[epsilon, # unique models]]
 # Epsilon = 1.0 corresponds to fully random, 0.0 to fully greedy
-epsilon_schedule = [[1.0, 500],
-                    [0.8, 50],
-                    [0.6, 70],
-                    [0.4, 70],
-                    [0.2, 70],
-                    [0.1, 40]]
+epsilon_schedule = [[1.0, 1000],
+                    [0.8, 500],
+                    [0.6, 100],
+                    [0.4, 200],
+                    [0.2, 200],
+                    [0.1, 80]]
 
 # Q-Learning Hyper parameters
 # Q Learning omega polynomial parameter (α = 1 / t^ω) where t is the iteration step and α is the learning rate from Eq 3
 # This learning rate was based on theoretical and experimental results (Even-Dar and Mansour, 5003)
 learning_rate_omega = 0.85
-discount_factor = 1.0  # Q Learning discount factor (gamma from Equation 3)
+discount_factor = 0.95  # Q Learning discount factor (gamma from Equation 3)
 replay_number = 128  # Number trajectories to sample for replay at each iteration
